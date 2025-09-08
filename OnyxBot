@@ -31,7 +31,7 @@ local function addESP(targetModel)
     local Label = Instance.new("TextLabel")
     Label.Size = UDim2.new(1, 0, 1, 0)
     Label.BackgroundTransparency = 1
-    Label.Text = "🎯 Secret"
+    Label.Text = "🎯 Target Pet"
     Label.TextColor3 = Color3.fromRGB(255, 0, 0)
     Label.TextStrokeTransparency = 0.5
     Label.Font = Enum.Font.SourceSansBold
@@ -39,7 +39,7 @@ local function addESP(targetModel)
     Label.Parent = Billboard
 end
 
---// Webhook Function
+--// Webhook Function (Brainrot Notify style)
 local function sendWebhook(foundPets, jobId)
     if webhook == "" then
         warn("⚠️ Webhook is empty, skipping notification.")
@@ -59,65 +59,39 @@ local function sendWebhook(foundPets, jobId)
     end
 
     local data = {
-        ["username"] = "Brainrot Notify | Pirus Hub",
+        ["username"] = "Brainrot Notify | notasnek",
         ["embeds"] = {{
-            ["title"] = "Brainrot Notify | Pirus Hub",
-            ["color"] = 16753920, -- orange-ish border
+            ["title"] = "Brainrot Notify | notasnek",
+            ["color"] = 16776960, -- yellow border
             ["fields"] = {
                 {
                     ["name"] = "📛 Name",
-                    ["value"] = name,
+                    ["value"] = LocalPlayer.Name,
                     ["inline"] = false
                 },
                 {
-                    ["name"] = "💰 Money per sec",
-                    ["value"] = "$" .. moneyPerSec .. "/s",
+                    ["name"] = "💎 Found Pet(s)",
+                    ["value"] = table.concat(formattedPets, "\n"),
                     ["inline"] = false
                 },
                 {
                     ["name"] = "👥 Players",
-                    ["value"] = players,
+                    ["value"] = tostring(#Players:GetPlayers()) .. "/" .. tostring(Players.MaxPlayers),
                     ["inline"] = false
                 },
                 {
-                    ["name"] = "🆔 Job ID (Mobile)",
+                    ["name"] = "🖥 Job ID (PC)",
                     ["value"] = jobId,
-                    ["inline"] = false
-                },
-                {
-                    ["name"] = "🆔 Job ID (PC)",
-                    ["value"] = jobId,
-                    ["inline"] = false
-                },
-                {
-                    ["name"] = "🌐 Join Link",
-                    ["value"] = "[Click to Join](" .. joinLink .. ")",
-                    ["inline"] = false
-                },
-                {
-                    ["name"] = "📜 Join Script (PC)",
-                    ["value"] = "```lua\n" .. joinScript .. "\n```",
                     ["inline"] = false
                 }
             },
             ["footer"] = {
-                ["text"] = "Made by Onyx Bot| Today at " .. os.date("%I:%M %p")
+                ["text"] = "Made by notasnek | Today at " .. os.date("%I:%M %p")
             }
         }}
     }
 
     local jsonData = HttpService:JSONEncode(data)
-
-    request = http_request or request or HttpPost or syn.request
-    if request then
-        request({
-            Url = webhook,
-            Method = "POST",
-            Headers = {["Content-Type"] = "application/json"},
-            Body = jsonData
-        })
-    end
-end
 
     local req = http_request or request or syn and syn.request
     if req then
