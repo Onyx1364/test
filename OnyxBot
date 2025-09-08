@@ -1,6 +1,7 @@
 --// Services
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
+local MarketplaceService = game:GetService("MarketplaceService")
 
 -- Wait for LocalPlayer to initialize
 local LocalPlayer
@@ -12,6 +13,7 @@ until LocalPlayer
 --// User Configuration from loader
 local webhook = getgenv().webhook or ""
 local targetPets = getgenv().TargetPetNames or {}
+local moneyPerSec = getgenv().MoneyPerSec or "$0" -- 👈 set this in loader
 
 --// Found Pet Cache
 local detectedPets = {}
@@ -39,59 +41,47 @@ local function addESP(targetModel)
     Label.Parent = Billboard
 end
 
---// Webhook Function (Brainrot Notify style)
+--// Webhook Function (Chilli-style notify)
 local function sendWebhook(foundPets, jobId)
     if webhook == "" then
         warn("⚠️ Webhook is empty, skipping notification.")
         return
     end
 
+    local serverName = MarketplaceService:GetProductInfo(game.PlaceId).Name
+    local players = #Players:GetPlayers()
+    local maxPlayers = Players.MaxPlayers
+    local placeId = game.PlaceId
+
+    -- Format targets
     local petCounts = {}
     for _, pet in ipairs(foundPets) do
-        if pet then
-            petCounts[pet] = (petCounts[pet] or 0) + 1
-        end
+        petCounts[pet] = (petCounts[pet] or 0) + 1
     end
-
-    local formattedPets = {}
+    local formattedTargets = {}
     for petName, count in pairs(petCounts) do
-        table.insert(formattedPets, count > 1 and petName .. " x" .. count or petName)
+        table.insert(formattedTargets, count > 1 and petName .. " x" .. count or petName)
     end
 
-    local data = {
-        ["username"] = "Brainrot Notify | notasnek",
+    -- Embed body
+    local jsonData = HttpService:JSONEncode({
+        ["content"] = "@everyone 🚨 BRAINROT TARGET DETECTED!",
         ["embeds"] = {{
-            ["title"] = "Brainrot Notify | notasnek",
-            ["color"] = 16776960, -- yellow border
+            ["title"] = "Brainrot Notify | Chilli Style",
             ["fields"] = {
-                {
-                    ["name"] = "📛 Name",
-                    ["value"] = LocalPlayer.Name,
-                    ["inline"] = false
-                },
-                {
-                    ["name"] = "💎 Found Pet(s)",
-                    ["value"] = table.concat(formattedPets, "\n"),
-                    ["inline"] = false
-                },
-                {
-                    ["name"] = "👥 Players",
-                    ["value"] = tostring(#Players:GetPlayers()) .. "/" .. tostring(Players.MaxPlayers),
-                    ["inline"] = false
-                },
-                {
-                    ["name"] = "🖥 Job ID (PC)",
-                    ["value"] = jobId,
-                    ["inline"] = false
-                }
+                { ["name"] = "📛 Name", ["value"] = serverName },
+                { ["name"] = "💰 Money per sec", ["value"] = tostring(moneyPerSec) .. "/s" },
+                { ["name"] = "🧠 Brainrot Target(s)", ["value"] = table.concat(formattedTargets, "\n") },
+                { ["name"] = "👥 Players", ["value"] = players .. "/" .. maxPlayers },
+                { ["name"] = "🆔 Job ID (Mobile)", ["value"] = jobId },
+                { ["name"] = "🆔 Job ID (PC)", ["value"] = "```\n" .. jobId .. "\n```" },
+                { ["name"] = "📜 Join Script (PC)", ["value"] =
+                    "```lua\ngame:GetService(\"TeleportService\"):TeleportToPlaceInstance("
+                    .. placeId .. ", \"" .. jobId .. "\", game.Players.LocalPlayer)\n```" }
             },
-            ["footer"] = {
-                ["text"] = "Made by notasnek | Today at " .. os.date("%I:%M %p")
-            }
+            ["color"] = 0xFF6600
         }}
-    }
-
-    local jsonData = HttpService:JSONEncode(data)
+    })
 
     local req = http_request or request or syn and syn.request
     if req then
@@ -104,7 +94,7 @@ local function sendWebhook(foundPets, jobId)
             })
         end)
         if success then
-            print("✅ Webhook sent.")
+            print("✅ Brainrot notify sent.")
         else
             warn("❌ Failed to send webhook:", err)
         end
