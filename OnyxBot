@@ -1,0 +1,196 @@
+--// Services
+local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+
+-- Wait for LocalPlayer to initialize
+local LocalPlayer
+repeat
+    LocalPlayer = Players.LocalPlayer
+    task.wait()
+until LocalPlayer
+
+--// User Configuration from loader
+local webhook = getgenv().webhook or ""
+local targetPets = getgenv().TargetPetNames or {}
+
+--// Found Pet Cache
+local detectedPets = {}
+local webhookSent = false
+
+--// ESP Function
+local function addESP(targetModel)
+    if targetModel:FindFirstChild("PetESP") then return end
+    local Billboard = Instance.new("BillboardGui")
+    Billboard.Name = "PetESP"
+    Billboard.Adornee = targetModel
+    Billboard.Size = UDim2.new(0, 100, 0, 30)
+    Billboard.StudsOffset = Vector3.new(0, 3, 0)
+    Billboard.AlwaysOnTop = true
+    Billboard.Parent = targetModel
+
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(1, 0, 1, 0)
+    Label.BackgroundTransparency = 1
+    Label.Text = "🎯 Secret"
+    Label.TextColor3 = Color3.fromRGB(255, 0, 0)
+    Label.TextStrokeTransparency = 0.5
+    Label.Font = Enum.Font.SourceSansBold
+    Label.TextScaled = true
+    Label.Parent = Billboard
+end
+
+--// Webhook Function
+local function sendWebhook(foundPets, jobId)
+    if webhook == "" then
+        warn("⚠️ Webhook is empty, skipping notification.")
+        return
+    end
+
+    local petCounts = {}
+    for _, pet in ipairs(foundPets) do
+        if pet then
+            petCounts[pet] = (petCounts[pet] or 0) + 1
+        end
+    end
+
+    local formattedPets = {}
+    for petName, count in pairs(petCounts) do
+        table.insert(formattedPets, count > 1 and petName .. " x" .. count or petName)
+    end
+
+    local data = {
+        ["username"] = "Brainrot Notify | Pirus Hub",
+        ["embeds"] = {{
+            ["title"] = "Brainrot Notify | Pirus Hub",
+            ["color"] = 16753920, -- orange-ish border
+            ["fields"] = {
+                {
+                    ["name"] = "📛 Name",
+                    ["value"] = name,
+                    ["inline"] = false
+                },
+                {
+                    ["name"] = "💰 Money per sec",
+                    ["value"] = "$" .. moneyPerSec .. "/s",
+                    ["inline"] = false
+                },
+                {
+                    ["name"] = "👥 Players",
+                    ["value"] = players,
+                    ["inline"] = false
+                },
+                {
+                    ["name"] = "🆔 Job ID (Mobile)",
+                    ["value"] = jobId,
+                    ["inline"] = false
+                },
+                {
+                    ["name"] = "🆔 Job ID (PC)",
+                    ["value"] = jobId,
+                    ["inline"] = false
+                },
+                {
+                    ["name"] = "🌐 Join Link",
+                    ["value"] = "[Click to Join](" .. joinLink .. ")",
+                    ["inline"] = false
+                },
+                {
+                    ["name"] = "📜 Join Script (PC)",
+                    ["value"] = "```lua\n" .. joinScript .. "\n```",
+                    ["inline"] = false
+                }
+            },
+            ["footer"] = {
+                ["text"] = "Made by Onyx Bot| Today at " .. os.date("%I:%M %p")
+            }
+        }}
+    }
+
+    local jsonData = HttpService:JSONEncode(data)
+
+    request = http_request or request or HttpPost or syn.request
+    if request then
+        request({
+            Url = webhook,
+            Method = "POST",
+            Headers = {["Content-Type"] = "application/json"},
+            Body = jsonData
+        })
+    end
+end
+
+    local req = http_request or request or syn and syn.request
+    if req then
+        local success, err = pcall(function()
+            req({
+                Url = webhook,
+                Method = "POST",
+                Headers = { ["Content-Type"] = "application/json" },
+                Body = jsonData
+            })
+        end)
+        if success then
+            print("✅ Webhook sent.")
+        else
+            warn("❌ Failed to send webhook:", err)
+        end
+    else
+        warn("❌ Executor doesn't support HTTP requests.")
+    end
+end
+
+--// Pet Detection Function
+local function checkForPets()
+    local found = {}
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj:IsA("Model") then
+            local nameLower = string.lower(obj.Name)
+            for _, target in pairs(targetPets) do
+                if string.find(nameLower, string.lower(target)) and not obj:FindFirstChild("PetESP") then
+                    addESP(obj)
+                    table.insert(found, obj.Name)
+                    break
+                end
+            end
+        end
+    end
+    return found
+end
+
+--// Live Detection for Pets
+workspace.DescendantAdded:Connect(function(obj)
+    task.wait(0.25)
+    if obj:IsA("Model") then
+        local nameLower = string.lower(obj.Name)
+        for _, target in pairs(targetPets) do
+            if string.find(nameLower, string.lower(target)) and not obj:FindFirstChild("PetESP") then
+                if not detectedPets[obj.Name] then
+                    detectedPets[obj.Name] = true
+                    addESP(obj)
+                    print("🎯 New pet appeared:", obj.Name)
+                    if not webhookSent then
+                        sendWebhook({obj.Name}, game.JobId)
+                        webhookSent = true
+                    end
+                end
+                break
+            end
+        end
+    end
+end)
+
+--// Start
+task.wait(6)
+local petsFound = checkForPets()
+if #petsFound > 0 then
+    for _, name in ipairs(petsFound) do
+        detectedPets[name] = true
+    end
+    if not webhookSent then
+        print("🎯 Found pet(s):", table.concat(petsFound, ", "))
+        sendWebhook(petsFound, game.JobId)
+        webhookSent = true
+    end
+else
+    print("🔍 No target pets found in this server.")
+end
