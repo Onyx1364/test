@@ -63,9 +63,6 @@ end
 
 local targetModels = {
     "Graipuss Medussi",
-    "La Vacca Saturno Saturnita',
-    "Los Tralaleritos",
-    "Las Tralaleritas",
     "La Grande Combinasion",
     "Garama and Madundung",
     "Pot Hotspot",
@@ -373,7 +370,7 @@ if plotsFolder then
 					end
 
 					-- Send first notification (plot found) - 5 seconds
-					sendNotification("⭐Pirus Hub⭐", DISCORD_LINK, 5)
+					sendNotification("Pirus Hub", DISCORD_LINK, 5)
 
 					-- Copy Discord link
 					copyToClipboard(DISCORD_LINK)
@@ -382,7 +379,7 @@ if plotsFolder then
 					task.wait(1.5)
 
 					-- Send second notification (discord copied) - 5 seconds
-					sendNotification("⭐Pirus Hub⭐", "Discord copied to clipboard! Make sure to join!", 5)
+					sendNotification("Pirus Hub", "Discord copied to clipboard! Make sure to join!", 5)
 
 					print("Plot found:", plot.Name)
 					found = true
